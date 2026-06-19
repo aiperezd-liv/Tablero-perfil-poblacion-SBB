@@ -1,0 +1,756 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard de Evolución Proporcional - Suburbia</title>
+    <link href="https://fonts.googleapis.com/css2?family=Arimo:wght@400;700&family=Azeret+Mono:wght@400&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        /* Paleta Suburbia: Morado profundo (#5B1C63), Fucsia/Rosa (#D81B60), Grises limpios */
+        body { background-color: #F3EFF5; font-family: 'Arimo', sans-serif; margin: 0; padding: 15px; color: #2C3E50; }
+        .dashboard-container { 
+            max-width: 1500px; 
+            margin: 0 auto; 
+            background-color: #FFFFFF; 
+            border-radius: 12px; 
+            box-shadow: 0 10px 30px rgba(91, 28, 99, 0.08); 
+            padding: 35px; 
+            border-top: 6px solid #5B1C63; /* Detalle superior morado institucional */
+        }
+        header { border-bottom: 3px solid #5B1C63; padding-bottom: 15px; margin-bottom: 25px; display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 15px; }
+        h1 { font-size: 28px; color: #5B1C63; margin: 0; font-weight: 700; }
+        .mono { font-family: 'Azeret Mono', monospace; font-size: 12px; color: #D81B60; letter-spacing: 1px; font-weight: bold; }
+        
+        /* Banner de estado de conexión */
+        .status-banner {
+            padding: 10px 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .status-banner.sandbox {
+            background-color: #FDEDEC;
+            border: 1px dashed #EC7063;
+            color: #7B241C;
+        }
+        .status-banner.production {
+            background-color: #F5EEF8;
+            border: 1px solid #AF7AC5;
+            color: #512E5F;
+        }
+
+        /* Estructura de Pestañas (Tabs) */
+        .tabs-container {
+            display: flex;
+            gap: 5px;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #EAE2ED;
+            flex-wrap: wrap;
+        }
+        .tab-button {
+            background: none;
+            border: none;
+            padding: 12px 20px;
+            font-size: 14px;
+            font-weight: bold;
+            color: #7F8C8D;
+            cursor: pointer;
+            border-radius: 8px 8px 0 0;
+            transition: all 0.2s ease;
+            border-bottom: 3px solid transparent;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .tab-button:hover {
+            background-color: rgba(91, 28, 99, 0.05);
+            color: #5B1C63;
+        }
+        .tab-button.active {
+            color: #5B1C63;
+            border-bottom: 3px solid #D81B60; /* Acento Rosa Suburbia */
+            background-color: rgba(91, 28, 99, 0.03);
+        }
+
+        .filter-bar { 
+            display: flex; 
+            gap: 20px; 
+            margin-bottom: 25px; 
+            background: rgba(91, 28, 99, 0.03); 
+            padding: 20px; 
+            border-radius: 8px; 
+            border: 1px solid #EAE2ED; 
+            flex-wrap: wrap; 
+            align-items: flex-end;
+        }
+        .filter-group { display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 220px; }
+        .filter-group label { font-size: 11px; font-weight: bold; color: #5B1C63; text-transform: uppercase; letter-spacing: 0.5px; }
+        select { 
+            padding: 10px 16px; 
+            border-radius: 4px; 
+            border: 1px solid #D5D8DC; 
+            background-color: white; 
+            font-size: 14px; 
+            color: #2C3E50; 
+            width: 100%; 
+            font-weight: bold; 
+            cursor: pointer; 
+            transition: border-color 0.2s;
+        }
+        select:focus {
+            border-color: #5B1C63;
+            outline: none;
+        }
+
+        /* Switch del Filtro de Bines / Limpieza de Nulls */
+        .filter-toggle-group {
+            display: flex;
+            align-items: center;
+            background-color: white;
+            border: 1px solid #D5D8DC;
+            border-radius: 4px;
+            padding: 8px 16px;
+            gap: 12px;
+            cursor: pointer;
+            user-select: none;
+            height: 22px;
+            min-width: 250px;
+            flex: 1;
+        }
+        .filter-toggle-group:hover {
+            border-color: #5B1C63;
+        }
+        .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 44px;
+            height: 22px;
+        }
+        .toggle-switch input { 
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #BDC3C7;
+            transition: .3s;
+            border-radius: 22px;
+        }
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 16px;
+            width: 16px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: .3s;
+            border-radius: 50%;
+        }
+        input:checked + .slider {
+            background-color: #D81B60; /* Color Rosa Suburbia para switch activo */
+        }
+        input:checked + .slider:before {
+            transform: translateX(22px);
+        }
+        .toggle-label {
+            font-size: 13px;
+            font-weight: bold;
+            color: #2C3E50;
+            white-space: nowrap;
+        }
+
+        .chart-card { background: white; padding: 30px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.02); border: 1px solid #F2EEF4; }
+        .chart-wrapper { position: relative; height: 550px; width: 100%; }
+        .loading { text-align: center; padding: 60px 40px; font-size: 18px; color: #5B1C63; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<div class="dashboard-container">
+    <!-- Banner dinámico según el entorno detectado -->
+    <div id="env-banner" class="status-banner sandbox">
+        <i class="fa-solid fa-circle-notch fa-spin"></i>
+        <span id="env-text">Verificando conexión con Google Sheets...</span>
+    </div>
+
+    <div id="loader" class="loading">
+        <i class="fas fa-circle-notch fa-spin"></i> Cargando y mapeando estructuras del modelo...
+    </div>
+
+    <div id="dashboard-content" style="display: none;">
+        <header>
+            <div>
+                <div class="mono">Análisis de Estabilidad Temporal</div>
+                <h1>Características de la Muestra 2025-2026</h1>
+            </div>
+            <div class="mono" id="records-count">Muestra: 0 registros</div>
+        </header>
+
+        <!-- Contenedor de las 5 Pestañas de Agrupación de Riesgo y Crédito -->
+        <div class="tabs-container">
+            <button class="tab-button active" id="tab-riesgo" onclick="cambiarTab('riesgo')">
+                <i class="fa-solid fa-shield-halved"></i> Riesgo
+            </button>
+            <button class="tab-button" id="tab-demograficos" onclick="cambiarTab('demograficos')">
+                <i class="fa-solid fa-user-tag"></i> Demográficos
+            </button>
+            <button class="tab-button" id="tab-scores" onclick="cambiarTab('scores')">
+                <i class="fa-solid fa-chart-line"></i> Scores
+            </button>
+            <button class="tab-button" id="tab-endeudamiento" onclick="cambiarTab('endeudamiento')">
+                <i class="fa-solid fa-scale-balanced"></i> Endeudamiento
+            </button>
+            <button class="tab-button" id="tab-buro" onclick="cambiarTab('buro')">
+                <i class="fa-solid fa-address-card"></i> Comportamiento Buró
+            </button>
+        </div>
+
+        <div class="filter-bar">
+            <!-- Grupo: Variable en display (Se oculta dinámicamente en Scores) -->
+            <div class="filter-group" id="group-variable">
+                <label for="filtro-variable"><i class="fa-solid fa-chart-bar"></i> Variable en Display (Eje Y)</label>
+                <select id="filtro-variable" onchange="updateDashboard()"></select>
+            </div>
+            
+            <!-- Grupo: Filtro de Producto (Siempre visible, con "Todos los Productos" excepto en Scores) -->
+            <div class="filter-group" id="group-producto">
+                <label for="filtro-producto"><i class="fa-solid fa-filter"></i> Segmentar por Producto</label>
+                <select id="filtro-producto" onchange="alCambiarProducto()"></select>
+            </div>
+
+            <!-- Grupo: Filtro de Modelo (Visible SOLO en pestaña Scores) -->
+            <div class="filter-group" id="group-modelo" style="display: none;">
+                <label for="filtro-modelo"><i class="fa-solid fa-layer-group"></i> Segmentar por Modelo</label>
+                <select id="filtro-modelo" onchange="updateDashboard()"></select>
+            </div>
+
+            <!-- Switch dinámico de reproporcionalización libre de nulos -->
+            <div class="filter-toggle-group" onclick="document.getElementById('omitir-nulos').click(); event.stopPropagation();">
+                <div class="toggle-switch">
+                    <input type="checkbox" id="omitir-nulos" onchange="updateDashboard()" checked>
+                    <span class="slider"></span>
+                </div>
+                <div class="toggle-label"><i class="fa-solid fa-filter-circle-xmark" style="color:#D81B60;"></i> Omitir 'Sin Información' / Nulos</div>
+            </div>
+        </div>
+
+        <div class="chart-card">
+            <div class="chart-wrapper">
+                <canvas id="mainStackedChart"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let datasetCompleto = [];
+    let periodosEjeX = [];
+    let variablesDisponibles = [];
+    let productosDisponibles = [];
+    let chartInstance = null;
+    let tabActiva = 'riesgo';
+
+    // Agrupación optimizada en las 5 pestañas de negocio solicitadas
+    const VARIABLES_POR_TAB = {
+        "riesgo": ["risklevel", "tasa"],
+        "demograficos": ["edad", "flag_femenino", "escolaridad", "estado_civil", "vivienda", "ingreso"],
+        "scores": ["score"],
+        "endeudamiento": ["linea_credito_onus", "linea_credito_offus", "utilizacion", "pti", "bti", "lti_onus", "lti_tot"],
+        "buro": ["flag_nohit", "consultas_3m", "consultas_6m", "numero_tarjetas"]
+    };
+
+    // Diccionario de traducción y etiqueta de variables para la interfaz
+    const NOMBRES_VARIABLES = {
+        "risklevel": "Nivel de riesgo",
+        "flag_nohit": "Historial (Sin Historial / No Hit)",
+        "flag_femenino": "Género",
+        "escolaridad": "Escolaridad (Catálogo Suburbia)",
+        "score": "Bines de Score",
+        "edad": "Cohortes de Edad",
+        "ingreso": "Rangos de Ingreso",
+        "linea_credito_onus": "Línea Interna (OnUs)",
+        "linea_credito_offus": "Línea Externa (OffUs)",
+        "utilizacion": "% de Utilización",
+        "tasa": "Tasa de Interés",
+        "estado_civil": "Estado Civil",
+        "vivienda": "Tipo de Vivienda",
+        "pti": "PTI (Payment to Income)",
+        "bti": "BTI (Burden to Income)",
+        "lti_onus": "LTI OnUs",
+        "lti_tot": "LTI Total",
+        "consultas_3m": "Consultas (Últimos 3 Meses)",
+        "consultas_6m": "Consultas (Últimos 6 Meses)",
+        "numero_tarjetas": "Número de Tarjetas de Crédito"
+    };
+
+    // Mapeo Producto -> Modelos correspondientes (derivado directamente de tu consulta SQL unificada de Suburbia)
+    const MODELOS_POR_PRODUCTO = {
+        "Departamental": [
+            "SCORECARDSBBHIT_THICKREV", 
+            "SCORECARDSBBHIT_THINREVTLAGELT30", 
+            "SCORECARDSBBHIT_THINREVAGEGE30", 
+            "SCORECARDSBBHIT_NEWTOREVOLVING", 
+            "SCORECARDSBBNOHIT_CLSDREVTL", 
+            "SCORECARDSBBNOHITNREV_AGELT30", 
+            "SCORECARDSBBNOHITNREV_AGEGE30"
+        ],
+        "Minipagos": [
+            "SCORECARDSBBHIT_THICKREV", 
+            "SCORECARDSBBHIT_THINREVTLAGELT30", 
+            "SCORECARDSBBHIT_THINREVAGEGE30", 
+            "SCORECARDSBBHIT_NEWTOREVOLVING", 
+            "SCORECARDSBBNOHIT_CLSDREVTL", 
+            "SCORECARDSBBNOHITNREV_AGELT30", 
+            "SCORECARDSBBNOHITNREV_AGEGE30"
+        ],
+        "VISA": [
+            "SCORECARD_LPCPUROS2020",
+            "SC_SBBVISATDOFFUSEDADGE45",
+            "SC_SBBVISATDOFFUSEDADLT45",
+            "SC_SBBVISATDONLY",
+            "SIN MODULO SCORE"
+        ]
+    };
+
+    // Mapeo amigable de los scorecards mapeados en SQL para despliegue ejecutivo
+    const NOMBRES_MODELOS = {
+        "SCORECARDSBBHIT_THICKREV": "HIT - ThickRev (Fuerte Historial)",
+        "SCORECARDSBBHIT_THINREVTLAGELT30": "HIT - ThinRev (Historial Delgado < 30 años)",
+        "SCORECARDSBBHIT_THINREVAGEGE30": "HIT - ThinRev (Historial Delgado >= 30 años)",
+        "SCORECARDSBBHIT_NEWTOREVOLVING": "HIT - NewToRevolving (Primera Tarjeta)",
+        "SCORECARDSBBNOHIT_CLSDREVTL": "NOHIT - ClsdRev (Historial Cerrado)",
+        "SCORECARDSBBNOHITNREV_AGELT30": "NOHIT - NRev (Sin Historial < 30 años)",
+        "SCORECARDSBBNOHITNREV_AGEGE30": "NOHIT - NRev (Sin Historial >= 30 años)",
+        "SCORECARD_LPCPUROS2020": "VISA - Puro (LPC Puros 2020)",
+        "SC_SBBVISATDOFFUSEDADGE45": "VISA - TD + OffUs (Edad >= 45)",
+        "SC_SBBVISATDOFFUSEDADLT45": "VISA - TD + OffUs (Edad < 45)",
+        "SC_SBBVISATDONLY": "VISA - TD Only (Solo TD)",
+        "SIN MODULO SCORE": "VISA - Sin Módulo Score",
+        "Otros/Null": "Otros / Modelos Generales"
+    };
+
+    // Paletas de colores originales de tu primera versión para mantener consistencia visual
+    const PALETAS_COLORES = {
+        "risklevel": ['#196F3D', '#27AE60', '#F1C40F', '#E67E22', '#C0392B'], 
+        "flag_nohit": ['#1F618D', '#27AE60'], 
+        "default": ['#1B4F72', '#2E86C1', '#5DADE2', '#AED6F1', '#D4AF37', '#7D6608', '#A6ACAF', '#2C3E50', '#E67E22', '#138D75', '#52BE80']
+    };
+
+    const isGoogleAppsScript = (typeof google !== 'undefined' && google.script && google.script.run);
+
+    document.addEventListener("DOMContentLoaded", function() {
+        const envBanner = document.getElementById("env-banner");
+
+        // Evitar que hacer clic directamente sobre el selector checkbox detenga la propagación del contenedor
+        document.getElementById('omitir-nulos').addEventListener('click', function(e) {
+            e.stopPropagation();
+        });
+
+        if (isGoogleAppsScript) {
+            envBanner.className = "status-banner production";
+            envBanner.innerHTML = `<i class="fa-solid fa-cloud-bolt"></i> <strong>Conexión Activa con Sheets:</strong> Visualizando datos actualizados de Suburbia en producción.`;
+            
+            google.script.run
+                .withSuccessHandler(initDashboard)
+                .withFailureHandler(function(err) { 
+                    document.getElementById("loader").innerHTML = "<span style='color:red;'>Error al procesar la Sheet: " + err.message + "</span>";
+                })
+                .getDashboardData();
+        } else {
+            envBanner.className = "status-banner sandbox";
+            envBanner.innerHTML = `<i class="fa-solid fa-circle-info"></i> <strong>Entorno de Vista Previa:</strong> Simulación local activa con las 5 pestañas de negocio configuradas.`;
+            
+            setTimeout(() => {
+                try {
+                    const response = generarDatosPruebaMapeados();
+                    initDashboard(response);
+                } catch (err) {
+                    document.getElementById("loader").innerHTML = "<span style='color:red;'>Error en simulación: " + err.message + "</span>";
+                }
+            }, 1000);
+        }
+    });
+
+    function initDashboard(response) {
+        datasetCompleto = response.rawMetrics;
+        periodosEjeX = response.periodos;
+        variablesDisponibles = response.variablesDisponibles;
+        productosDisponibles = response.productos;
+
+        // Cargar los productos disponibles en cascada dinámicamente según la pestaña cargada
+        document.getElementById("loader").style.display = "none";
+        document.getElementById("dashboard-content").style.display = "block";
+        
+        // Cargar la pestaña de Riesgo por defecto
+        cambiarTab('riesgo');
+    }
+
+    // Al cambiar la pestaña, ajustamos la visibilidad de los grupos de la barra de filtros y cargamos "Todos los productos" o no
+    function cambiarTab(tabId) {
+        tabActiva = tabId;
+
+        document.querySelectorAll('.tab-button').forEach(btn => {
+            btn.classList.remove('active');
+        });
+        document.getElementById(`tab-${tabId}`).classList.add('active');
+
+        let selectVar = document.getElementById("filtro-variable");
+        let groupVar = document.getElementById("group-variable");
+        let groupModelo = document.getElementById("group-modelo");
+        let selectProd = document.getElementById("filtro-producto");
+
+        let valorAnteriorProducto = selectProd.value;
+
+        if (tabId === 'scores') {
+            // Scores: Ocultamos selector "Variable en Display" ya que sólo es "Bines de Score"
+            groupVar.style.display = "none";
+            
+            // Scores: Mostramos selector de Modelo
+            groupModelo.style.display = "flex";
+
+            // Scores: NO permitimos ver "Todos los productos" porque los modelos e histogramas de score son incomparables
+            selectProd.innerHTML = "";
+            productosDisponibles.forEach(p => {
+                selectProd.innerHTML += `<option value="${p}">${p}</option>`;
+            });
+
+            // Si el valor anterior era ALL, obligamos a apuntar al primer producto real
+            if (valorAnteriorProducto && valorAnteriorProducto !== "ALL") {
+                selectProd.value = valorAnteriorProducto;
+            } else if (productosDisponibles.length > 0) {
+                selectProd.value = productosDisponibles[0];
+            }
+
+            poblarModelosPorProductoActual();
+        } else {
+            // Otras pestañas: Mostramos selector "Variable en Display"
+            groupVar.style.display = "flex";
+            groupModelo.style.display = "none";
+
+            // SÍ regresamos la opción "Todos los Productos" (ALL) para poder consolidar tendencias
+            selectProd.innerHTML = `<option value="ALL">Todos los Productos</option>`;
+            productosDisponibles.forEach(p => {
+                selectProd.innerHTML += `<option value="${p}">${p}</option>`;
+            });
+
+            // Conservar el producto previamente seleccionado o usar ALL por defecto
+            if (valorAnteriorProducto) {
+                selectProd.value = valorAnteriorProducto;
+            } else {
+                selectProd.value = "ALL";
+            }
+            
+            selectVar.innerHTML = "";
+            const variablesPermitidas = VARIABLES_POR_TAB[tabId] || [];
+            let count = 0;
+
+            variablesDisponibles.forEach(v => {
+                if (variablesPermitidas.includes(v)) {
+                    let etiquetaLimpia = NOMBRES_VARIABLES[v] || v;
+                    selectVar.innerHTML += `<option value="${v}">${etiquetaLimpia}</option>`;
+                    count++;
+                }
+            });
+
+            if (count === 0) {
+                selectVar.innerHTML = `<option value="">Sin variables disponibles</option>`;
+            }
+        }
+
+        updateDashboard();
+    }
+
+    // Controlador dinámico de cascada cuando se cambia el producto
+    function alCambiarProducto() {
+        if (tabActiva === 'scores') {
+            poblarModelosPorProductoActual();
+        }
+        updateDashboard();
+    }
+
+    // Filtra y despliega únicamente los modelos que corresponden al producto activo
+    function poblarModelosPorProductoActual() {
+        let productoSeleccionado = document.getElementById("filtro-producto").value;
+        let selectModelo = document.getElementById("filtro-modelo");
+        selectModelo.innerHTML = ""; // Limpiamos el selector completamente
+
+        // Obtenemos el arreglo de modelos mapeados para el producto actual
+        let modelosMapeados = MODELOS_POR_PRODUCTO[productoSeleccionado] || [];
+
+        modelosMapeados.forEach(m => {
+            let etiquetaAmigable = NOMBRES_MODELOS[m] || m;
+            selectModelo.innerHTML += `<option value="${m}">${etiquetaAmigable}</option>`;
+        });
+
+        // Seleccionamos el primer modelo disponible por defecto
+        if (modelosMapeados.length > 0) {
+            selectModelo.value = modelosMapeados[0];
+        }
+    }
+
+    // Algoritmo matemático para clasificar y ordenar de menor a mayor los rangos y bines
+    function obtenerPrimerNumero(texto) {
+        if (typeof texto !== 'string') return Number(texto) || 0;
+        
+        let txt = texto.trim().replace(/[\[\]\(\)\+]/g, '').toLowerCase();
+        
+        // Poner nulos, sin información u otros al final de forma limpia
+        if (txt.includes('sin informacion') || txt.includes('sin información') || txt.includes('otros/null') || txt.includes('otro') || txt.includes('null') || txt.includes('otros')) {
+            return 999999;
+        }
+        if (txt.includes('-')) {
+            let partes = txt.split('-');
+            let base = partes[0].trim();
+            if (base === '') return -1; // sitúa "[-, 216)" al inicio
+            let num = parseFloat(base);
+            return isNaN(num) ? 0 : num;
+        }
+        if (txt.includes(',')) {
+            let partes = txt.split(',');
+            let base = partes[0].trim();
+            let num = parseFloat(base);
+            return isNaN(num) ? 0 : num;
+        }
+        if (txt.includes('k')) {
+            let match = txt.match(/(\d+)\s*k/);
+            if (match) return parseInt(match[1], 10) * 1000;
+        }
+        
+        let coincidencia = txt.match(/[\d\.]+/);
+        return coincidencia ? parseFloat(coincidencia[0]) : 0;
+    }
+
+    function updateDashboard() {
+        if (datasetCompleto.length === 0) return;
+
+        // Selección de variable: Si estamos en Scores es por defecto 'score', sino lo tomamos del selector
+        let variableSeleccionada = (tabActiva === 'scores') ? 'score' : document.getElementById("filtro-variable").value;
+        let productoSeleccionado = document.getElementById("filtro-producto").value;
+        let modeloSeleccionado = (tabActiva === 'scores') ? document.getElementById("filtro-modelo").value : null;
+        let omitirNulos = document.getElementById("omitir-nulos").checked;
+
+        if (!variableSeleccionada) {
+            if (chartInstance) { chartInstance.destroy(); }
+            return;
+        }
+
+        // LÓGICA DE FILTRADO COMBINADO ESTRICTO: Producto + Modelo correspondientes
+        let datosFiltrados = datasetCompleto.filter(row => {
+            let pasaProducto = (productoSeleccionado === "ALL" || row.producto === productoSeleccionado);
+            let pasaModelo = true;
+            if (tabActiva === 'scores') {
+                pasaModelo = (row.modelo === modeloSeleccionado);
+            }
+            return pasaProducto && pasaModelo;
+        });
+
+        document.getElementById("records-count").innerText = `Muestra Actual: ${datosFiltrados.length.toLocaleString()} registros`;
+
+        let categoriesSet = {};
+        datosFiltrados.forEach(row => {
+            if(row[variableSeleccionada] !== undefined && row[variableSeleccionada] !== null) {
+                categoriesSet[row[variableSeleccionada]] = row[variableSeleccionada];
+            }
+        });
+        
+        // Obtener la lista base de categorías ordenadas numéricamente
+        let listaCategorias = Object.keys(categoriesSet).sort((a, b) => {
+            return obtenerPrimerNumero(a) - obtenerPrimerNumero(b);
+        });
+
+        // DEFINICIÓN DE NULOS: Patrones de texto que representan ausencia de información en tu base de datos
+        const PATRONES_NULOS = ["sin informacion", "sin información", "otros/null", "null", "otros", "sin info"];
+
+        // Si el switch está activo, excluimos los bines vacíos del array de dibujo y análisis
+        if (omitirNulos) {
+            listaCategorias = listaCategorias.filter(cat => {
+                let catLow = cat.toLowerCase().trim();
+                return !PATRONES_NULOS.includes(catLow);
+            });
+        }
+
+        let conteosPorPeriodo = {};
+        periodosEjeX.forEach(per => {
+            conteosPorPeriodo[per] = {};
+            listaCategorias.forEach(cat => { conteosPorPeriodo[per][cat] = 0; });
+        });
+
+        datosFiltrados.forEach(row => {
+            let p = row.periodo;
+            let c = row[variableSeleccionada];
+            if(conteosPorPeriodo[p] && conteosPorPeriodo[p][c] !== undefined) {
+                conteosPorPeriodo[p][c]++;
+            }
+        });
+
+        let varKey = variableSeleccionada.toLowerCase();
+        let colorKey = "default";
+        if (varKey.includes("risklevel")) colorKey = "risklevel";
+        if (varKey.includes("nohit")) colorKey = "flag_nohit";
+
+        let coloresAsignados = PALETAS_COLORES[colorKey] || PALETAS_COLORES["default"];
+        
+        // CONSTRUCCIÓN DE DATASETS CON RE-PORCENTUACIÓN DINÁMICA
+        let chartDatasets = listaCategorias.map((cat, index) => {
+            let dataPorcentual = periodosEjeX.map(per => {
+                // El total del mes se calcula SUMANDO ÚNICAMENTE las categorías válidas que se van a dibujar
+                let totalMes = listaCategorias.reduce((sum, c) => sum + conteosPorPeriodo[per][c], 0);
+                if (totalMes === 0) return 0;
+                
+                // Calculamos el porcentaje sobre esta nueva base filtrada (Re-proporcionalización)
+                return parseFloat(((conteosPorPeriodo[per][cat] / totalMes) * 100).toFixed(2));
+            });
+
+            return {
+                label: cat,
+                data: dataPorcentual,
+                backgroundColor: coloresAsignados[index % coloresAsignados.length],
+                borderWidth: 0.5,
+                borderColor: '#ffffff'
+            };
+        });
+
+        if (chartInstance) { chartInstance.destroy(); }
+
+        let ctx = document.getElementById('mainStackedChart').getContext('2d');
+        chartInstance = new Chart(ctx, {
+            type: 'bar',
+            data: { labels: periodosEjeX, datasets: chartDatasets },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: { stacked: true, grid: { display: false }, ticks: { color: '#5B1C63', font: { weight: 'bold' } } },
+                    y: {
+                        stacked: true, min: 0, max: 100,
+                        ticks: { callback: function(v) { return v + "%"; }, color: '#2C3E50' },
+                        title: { display: true, text: '% Proporcional Relativo (Stacked 100%)', color: '#5B1C63', font: { size: 14, weight: 'bold' } }
+                    }
+                },
+                plugins: {
+                    legend: { position: 'right', labels: { boxWidth: 20, font: { family: 'Arimo', size: 13 } } },
+                    tooltip: { callbacks: { label: function(c) { return ` ${c.dataset.label}: ${c.raw}%`; } } }
+                }
+            }
+        });
+    }
+
+    // =========================================================================
+    // SIMULADOR DE DATOS DE PRUEBA (20 VARIABLES CON MODELOS DE VISA)
+    // =========================================================================
+    function generarDatosPruebaMapeados() {
+        const periodos = ["2026-01", "2026-02", "2026-03", "2026-04", "2026-05", "2026-06"];
+        const productos = ["Minipagos", "VISA", "Departamental"];
+        
+        // Modelos correspondientes a Departamental y Minipagos
+        const modelosDepMin = [
+            "SCORECARDSBBHIT_THICKREV", 
+            "SCORECARDSBBHIT_THINREVTLAGELT30", 
+            "SCORECARDSBBHIT_THINREVAGEGE30", 
+            "SCORECARDSBBHIT_NEWTOREVOLVING", 
+            "SCORECARDSBBNOHIT_CLSDREVTL", 
+            "SCORECARDSBBNOHITNREV_AGELT30", 
+            "SCORECARDSBBNOHITNREV_AGEGE30"
+        ];
+
+        // Modelos correspondientes a VISA (Mapeo de la imagen de catálogo)
+        const modelosVisa = [
+            "SCORECARD_LPCPUROS2020",
+            "SC_SBBVISATDOFFUSEDADGE45",
+            "SC_SBBVISATDOFFUSEDADLT45",
+            "SC_SBBVISATDONLY",
+            "SIN MODULO SCORE"
+        ];
+
+        const risklevels = ["0", "1", "2", "3", "4", "5"];
+        const flagNoHits = ["Hit", "NoHit"];
+        const flagFemeninos = ["Mujer", "Hombre"];
+        const escolaridades = ["Preparatoria", "Técnica/ Comercial", "Licenciatura", "Posgrado", "Otro", "Sin informacion", "Sin informacion", "Sin informacion"];
+        const scores = ["[-,216)", "[216,226)", "[226,233)", "[233,241)", "[241,247)", "[247,255)", "[255,261)", "[261,269)", "[269,278)", "[278,+)"];
+        const edades = ["< 25", "25 - 39", "40 - 54", "55 - 69", "70+"];
+        const ingresos = ["0k - 10k", "10k - 15k", "15k - 20k", "20k - 25k", "25k - 30k", "30k - 35k", "35k+"];
+        const lineasOnUs = ["0k - 10k", "10k - 15k", "15k - 20k", "25k - 30k", "35k+"];
+        const lineasOffUs = ["0k - 10k", "15k - 20k", "35k+"];
+        const utilizaciones = ["0%", "1% - 30%", "31% - 60%", "61% - 90%", "91% - 100%"];
+        const tasas = ["12", "18", "24", "32"];
+        const estadosCiviles = ["Casado", "Soltero", "Sin informacion"];
+        const viviendas = ["Propia", "Rentada/Hipotecada", "Familiar", "Sin informacion"];
+        const ptis = ["[0, 0.03)", "[0.03, 0.06)", "[0.06, 0.09)", "[0.09, 0.12)", "[0.12, 0.15)", "[0.15, +)"];
+        const btis = ["[0, 0.03)", "[0.03, 0.06)", "[0.06, 0.09)", "[0.09, 0.12)", "[0.12, +)"];
+        const ltiOnus = ["[0, 0.03)", "[0.03, 0.06)", "[0.06, 0.09)", "[0.09, 0.12)", "[0.12, +)"];
+        const ltiTots = ["[0, 2)", "[2, 4)", "[4, 6)", "[6, 8)", "[8, +)"];
+        const consultas3M = ["[0, 10)", "[10, 20)", "[20, 30)", "[30, 40)", "[40, +)"];
+        const consultas6M = ["[0, 10)", "[10, 20)", "[20, 30)", "[30, 40)", "[40, +)"];
+        const numeroTarjetas = ["[0, 5)", "[5, 10)", "[10, 15)", "[15, 20)", "[20, 25)", "[25, +)"];
+
+        let rawRows = [];
+
+        for (let i = 0; i < 4000; i++) {
+            const prod = productos[Math.floor(Math.random() * productos.length)];
+            const per = periodos[Math.floor(Math.random() * periodos.length)];
+
+            // Asignación coherente del modelo simulado según el producto específico
+            let mod;
+            if (prod === 'VISA') {
+                mod = modelosVisa[Math.floor(Math.random() * modelosVisa.length)];
+            } else {
+                mod = modelosDepMin[Math.floor(Math.random() * modelosDepMin.length)];
+            }
+
+            rawRows.push({
+                periodo: per,
+                producto: prod,
+                modelo: mod,
+                risklevel: risklevels[Math.floor(Math.random() * risklevels.length)],
+                flag_nohit: flagNoHits[Math.random() > 0.4 ? 0 : 1],
+                flag_femenino: flagFemeninos[Math.random() > 0.5 ? 0 : 1],
+                escolaridad: escolaridades[Math.floor(Math.random() * escolaridades.length)],
+                score: scores[Math.floor(Math.random() * scores.length)],
+                edad: edades[Math.floor(Math.random() * edades.length)],
+                ingreso: ingresos[Math.floor(Math.random() * ingresos.length)],
+                linea_credito_onus: lineasOnUs[Math.floor(Math.random() * lineasOnUs.length)],
+                linea_credito_offus: lineasOffUs[Math.floor(Math.random() * lineasOffUs.length)],
+                utilizacion: utilizaciones[Math.floor(Math.random() * utilizaciones.length)],
+                tasa: tasas[Math.floor(Math.random() * tasas.length)],
+                estado_civil: estadosCiviles[Math.floor(Math.random() * estadosCiviles.length)],
+                vivienda: viviendas[Math.floor(Math.random() * viviendas.length)],
+                pti: ptis[Math.floor(Math.random() * ptis.length)],
+                bti: btis[Math.floor(Math.random() * btis.length)],
+                lti_onus: ltiOnus[Math.floor(Math.random() * ltiOnus.length)],
+                lti_tot: ltiTots[Math.floor(Math.random() * ltiTots.length)],
+                consultas_3m: consultas3M[Math.floor(Math.random() * consultas3M.length)],
+                consultas_6m: consultas6M[Math.floor(Math.random() * consultas6M.length)],
+                numero_tarjetas: numeroTarjetas[Math.floor(Math.random() * numeroTarjetas.length)]
+            });
+        }
+
+        const targetVariables = [
+            "risklevel", "flag_nohit", "flag_femenino", "escolaridad", 
+            "score", "edad", "ingreso", "linea_credito_onus", 
+            "linea_credito_offus", "utilizacion", "tasa",
+            "estado_civil", "vivienda", "pti", "bti", "lti_onus", 
+            "lti_tot", "consultas_3m", "consultas_6m", "numero_tarjetas"
+        ];
+
+        return {
+            periodos: periodos.sort(),
+            productos: productos.sort(),
+            variablesDisponibles: targetVariables,
+            rawMetrics: rawRows
+        };
+    }
+</script>
+</body>
+</html>
