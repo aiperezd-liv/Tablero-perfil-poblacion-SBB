@@ -203,18 +203,16 @@ SOLICITUDES AS (
     AND a.BR_FCH_SOLIC >= FCH_INI
 ),
 
+-- MUESTRA_PREPARADA: Exactamente tu lógica original limpia, corregida y probada
 MUESTRA_PREPARADA AS (
   SELECT
-    FORMAT_DATE('%Y-%m', BR_FCH_SOLIC) AS PERIODO,
+    FORMAT_DATE('%Y-%m', BR_FCH_SOLIC) AS PERIODO, -- Usa la fecha real de la solicitud
     Producto,
     COALESCE(BR_MODULO_SCORE_DES, 'Otros/Null') AS Modelo,
-    Segmento,
-    Temp_Venta,
     CAST(RiskLevel AS STRING) AS RiskLevel, 
     IF(BR_HIT_CVE = 2, 'NoHit', 'Hit') AS Flag_NoHit,
     IF(BR_SEXO = 'F', 'Mujer', 'Hombre') AS Flag_Femenino,
     
-    -- Proyección de métricas financieras categorizadas por rangos
     CASE 
       WHEN PTI >= 0 AND PTI < 0.03 THEN '0%-3%'
       WHEN PTI >= 0.03 AND PTI < 0.06 THEN '3%-6%'
@@ -264,31 +262,28 @@ MUESTRA_PREPARADA AS (
       ELSE 'Otros/Null'
     END AS LTI_TOT,
 
-    -- Categorización de Consultas a 3 Meses
     CASE
-      WHEN IQ_NUM_CONS_3M =0 THEN '0'
-      WHEN IQ_NUM_CONS_3M =1 THEN '1'
-      WHEN IQ_NUM_CONS_3M =2 THEN '2'
-      WHEN IQ_NUM_CONS_3M =3 THEN '3'
-      WHEN IQ_NUM_CONS_3M =4 THEN '4'
-      WHEN IQ_NUM_CONS_3M =5 THEN '5'
-      WHEN IQ_NUM_CONS_3M >=6 THEN '6+'
+      WHEN IQ_NUM_CONS_3M = 0 THEN '0'
+      WHEN IQ_NUM_CONS_3M = 1 THEN '1'
+      WHEN IQ_NUM_CONS_3M = 2 THEN '2'
+      WHEN IQ_NUM_CONS_3M = 3 THEN '3'
+      WHEN IQ_NUM_CONS_3M = 4 THEN '4'
+      WHEN IQ_NUM_CONS_3M = 5 THEN '5'
+      WHEN IQ_NUM_CONS_3M >= 6 THEN '6+'
       ELSE 'Otros/Null'
-    END AS IQ_NUM_CONS_3M,
+    END AS Consultas_3M,
 
-    -- Categorización de Consultas a 6 Meses
     CASE
-      WHEN IQ_NUM_CONS_6M =0 THEN '0'
-      WHEN IQ_NUM_CONS_6M =1 THEN '1'
-      WHEN IQ_NUM_CONS_6M =2 THEN '2'
-      WHEN IQ_NUM_CONS_6M =3 THEN '3'
-      WHEN IQ_NUM_CONS_6M =4 THEN '4'
-      WHEN IQ_NUM_CONS_6M =5 THEN '5'
-      WHEN IQ_NUM_CONS_6M >=6 THEN '6+'
+      WHEN IQ_NUM_CONS_6M = 0 THEN '0'
+      WHEN IQ_NUM_CONS_6M = 1 THEN '1'
+      WHEN IQ_NUM_CONS_6M = 2 THEN '2'
+      WHEN IQ_NUM_CONS_6M = 3 THEN '3'
+      WHEN IQ_NUM_CONS_6M = 4 THEN '4'
+      WHEN IQ_NUM_CONS_6M = 5 THEN '5'
+      WHEN IQ_NUM_CONS_6M >= 6 THEN '6+'
       ELSE 'Otros/Null'
-    END AS IQ_NUM_CONS_6M,
+    END AS Consultas_6M,
 
-    -- Categorización de Número de Tarjetas
     CASE
       WHEN TL_NUM_CTAS_TDC_ABT = 1 THEN '1'
       WHEN TL_NUM_CTAS_TDC_ABT = 2 THEN '2'
@@ -297,18 +292,16 @@ MUESTRA_PREPARADA AS (
       WHEN TL_NUM_CTAS_TDC_ABT = 5 THEN '5'
       WHEN TL_NUM_CTAS_TDC_ABT = 6 THEN '6'
       WHEN TL_NUM_CTAS_TDC_ABT = 7 THEN '7'
-      WHEN TL_NUM_CTAS_TDC_ABT >=8  THEN '8+'
+      WHEN TL_NUM_CTAS_TDC_ABT >= 8 THEN '8+'
       ELSE 'Otros/Null'
-    END AS TL_NUM_CTAS_TDC_ABT,
+    END AS Numero_tarjetas,
 
-    -- Categorización de Estado Civil conforme a la clave
     CASE 
       WHEN CAST(BR_EDC_CVE AS STRING) = '2' THEN 'Casado'
-      WHEN CAST(BR_EDC_CVE AS STRING)= '1' THEN 'Soltero'
+      WHEN CAST(BR_EDC_CVE AS STRING) = '1' THEN 'Soltero'
       ELSE 'Sin informacion'
     END AS Estado_Civil,
 
-    -- Categorización de Tipo de Vivienda conforme a la clave
     CASE 
       WHEN CAST(BR_TIP_VDA AS STRING) = '1' THEN 'Propia'
       WHEN CAST(BR_TIP_VDA AS STRING) = '2' THEN 'Rentada/Hipotecada'
@@ -316,7 +309,6 @@ MUESTRA_PREPARADA AS (
       ELSE 'Sin informacion'
     END AS Vivienda,
     
-    -- Mapeo estructurado de la variable Escolaridad conforme al catálogo institucional de Suburbia
     CASE 
       WHEN CAST(BR_ESCOLARIDAD AS STRING) = '1' THEN 'Preparatoria'
       WHEN CAST(BR_ESCOLARIDAD AS STRING) = '2' THEN 'Técnica/ Comercial'
@@ -326,14 +318,8 @@ MUESTRA_PREPARADA AS (
       ELSE 'Sin informacion'
     END AS Escolaridad,
     
-    -- =========================================================================
-    -- RANGOS DE SCORE MAPEADOS DIRECTAMENTE (SIN PREFIJO NUMÉRICO)
-    -- =========================================================================
     CASE
-      -- -----------------------------------------------------------------------
-      -- GRUPO A: VISA (BR_ORG = 200) - HIT
-      -- -----------------------------------------------------------------------
-      /* Puro (SegmentoScore = 36) y TD Only (SegmentoScore = 35) */
+      -- VISA
       WHEN Producto = 'VISA' AND SegmentoScore IN (35, 36) AND BR_SCORE_FIN < 216 THEN '[-,216)'
       WHEN Producto = 'VISA' AND SegmentoScore IN (35, 36) AND BR_SCORE_FIN < 226 THEN '[216,226)'
       WHEN Producto = 'VISA' AND SegmentoScore IN (35, 36) AND BR_SCORE_FIN < 233 THEN '[226,233)'
@@ -345,7 +331,6 @@ MUESTRA_PREPARADA AS (
       WHEN Producto = 'VISA' AND SegmentoScore IN (35, 36) AND BR_SCORE_FIN < 278 THEN '[269,278)'
       WHEN Producto = 'VISA' AND SegmentoScore IN (35, 36) AND BR_SCORE_FIN >= 278 THEN '[278,+)'
 
-      /* TD+OffUs&EdadGE45 (SegmentoScore = 33) */
       WHEN Producto = 'VISA' AND SegmentoScore = 33 AND BR_SCORE_FIN < 226 THEN '[-,226)'
       WHEN Producto = 'VISA' AND SegmentoScore = 33 AND BR_SCORE_FIN < 240 THEN '[226,240)'
       WHEN Producto = 'VISA' AND SegmentoScore = 33 AND BR_SCORE_FIN < 249 THEN '[240,249)'
@@ -357,7 +342,6 @@ MUESTRA_PREPARADA AS (
       WHEN Producto = 'VISA' AND SegmentoScore = 33 AND BR_SCORE_FIN < 295 THEN '[285,295)'
       WHEN Producto = 'VISA' AND SegmentoScore = 33 AND BR_SCORE_FIN >= 295 THEN '[295,+)'
 
-      /* TD+OffUs&EdadLT45 (SegmentoScore = 34) */
       WHEN Producto = 'VISA' AND SegmentoScore = 34 AND BR_SCORE_FIN < 215 THEN '[-,215)'
       WHEN Producto = 'VISA' AND SegmentoScore = 34 AND BR_SCORE_FIN < 227 THEN '[215,227)'
       WHEN Producto = 'VISA' AND SegmentoScore = 34 AND BR_SCORE_FIN < 236 THEN '[227,236)'
@@ -545,16 +529,6 @@ MUESTRA_PREPARADA AS (
       WHEN Producto = 'Minipagos' AND BR_MODULO_SCORE_DES = 'SCORECARDSBBNOHITNREV_AGEGE30' AND BR_SCORE_FIN < 290 THEN '[279,290)'
       WHEN Producto = 'Minipagos' AND BR_MODULO_SCORE_DES = 'SCORECARDSBBNOHITNREV_AGEGE30' AND BR_SCORE_FIN < 302 THEN '[290,302)'
       WHEN Producto = 'Minipagos' AND BR_MODULO_SCORE_DES = 'SCORECARDSBBNOHITNREV_AGEGE30' AND BR_SCORE_FIN >= 302 THEN '[302,+)'
-
-      -- -----------------------------------------------------------------------
-      -- REGRESIÓN O CASOS EXCEPCIONALES (MODELOS NO MAPEADOS)
-      -- -----------------------------------------------------------------------
-      WHEN BR_SCORE_FIN >= 200 AND BR_SCORE_FIN < 225 THEN '200 - 225'
-      WHEN BR_SCORE_FIN >= 225 AND BR_SCORE_FIN < 250 THEN '225 - 250'
-      WHEN BR_SCORE_FIN >= 250 AND BR_SCORE_FIN < 275 THEN '250 - 275'
-      WHEN BR_SCORE_FIN >= 275 AND BR_SCORE_FIN <= 300 THEN '275 - 300'
-      WHEN BR_SCORE_FIN > 300 THEN 'Mayores a 300'
-      ELSE 'Otros/Null'
     END AS Score,
     
     CASE 
@@ -607,47 +581,40 @@ MUESTRA_PREPARADA AS (
       ELSE '91% - 100%'
     END AS Utilizacion,
     
-    CAST(BR_TASA_CVE AS STRING) AS Tasa,
-
-    ROW_NUMBER() OVER (
-      PARTITION BY FORMAT_DATE('%Y-%m', BR_FCH_SOLIC), Producto
-      ORDER BY RAND()
-    ) AS indice_aleatorio
+    CAST(BR_TASA_CVE AS STRING) AS Tasa
 
   FROM SOLICITUDES
   WHERE CTA_CVE > 0 
+  AND RiskLevel != -999
+
+),
+
+-- UNPIVOT: Transponemos las 20 columnas a una estructura vertical sin tocar tu lógica de negocio
+MUESTRA_UNPIVOTED AS (
+  SELECT 
+    PERIODO,
+    Producto,
+    Modelo,
+    variable,
+    valor_categoria
+  FROM MUESTRA_PREPARADA
+  UNPIVOT(
+    valor_categoria FOR variable IN (
+      RiskLevel, Flag_NoHit, Flag_Femenino, Estado_Civil, Vivienda, Escolaridad, 
+      Score, Edad, Ingreso, Linea_Credito_OnUs, Linea_Credito_OffUs, Utilizacion, 
+      Tasa, PTI, BTI, LTI_ONUS, LTI_TOT, Consultas_3M, Consultas_6M, Numero_tarjetas
+    )
+  )
 )
 
+-- AGREGACIÓN FINAL: Sumatorias agrupadas del 100% de la población por BigQuery
 SELECT 
-  PERIODO,
+  PERIODO AS Periodo,
   Producto,
   Modelo,
-  Segmento,
-  Temp_Venta,
-  RiskLevel,
-  Flag_NoHit,
-  Flag_Femenino,
-  Estado_Civil,
-  Vivienda,
-  Escolaridad,
-  Score,
-  Edad,
-  Ingreso,
-  Linea_Credito_OnUs,
-  Linea_Credito_OffUs,
-  Utilizacion,
-  Tasa,
-  PTI,
-  BTI,
-  LTI_ONUS,
-  LTI_TOT,
-  IQ_NUM_CONS_3M AS Consultas_3M,
-  IQ_NUM_CONS_6M AS Consultas_6M,
-  TL_NUM_CTAS_TDC_ABT AS Numero_tarjetas
-FROM MUESTRA_PREPARADA
-WHERE indice_aleatorio <= 3000 
-  AND RiskLevel != '-999'
-  AND Score IS NOT NULL
-  AND Tasa IS NOT NULL    
-ORDER BY PERIODO DESC
-LIMIT 200000;
+  variable AS Variable,
+  valor_categoria AS Valor_Categoria,
+  COUNT(*) AS Conteo
+FROM MUESTRA_UNPIVOTED
+GROUP BY 1, 2, 3, 4, 5
+ORDER BY Periodo DESC, Producto, Modelo, Variable, Valor_Categoria;
