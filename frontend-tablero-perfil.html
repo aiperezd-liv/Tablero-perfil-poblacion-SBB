@@ -179,23 +179,23 @@
 <body>
 
 <div class="dashboard-container">
-    <!-- Banner dinámico según el entorno detectado -->
+    <!-- Banner de estado de conexión -->
     <div id="env-banner" class="status-banner sandbox">
         <i class="fa-solid fa-circle-notch fa-spin"></i>
         <span id="env-text">Verificando conexión con Google Sheets...</span>
     </div>
 
     <div id="loader" class="loading">
-        <i class="fas fa-circle-notch fa-spin"></i> Cargando y mapeando estructuras del modelo...
+        <i class="fas fa-circle-notch fa-spin"></i> Cargando estructuras y agregaciones del modelo...
     </div>
 
     <div id="dashboard-content" style="display: none;">
         <header>
             <div>
-                <div class="mono">Análisis de Estabilidad Temporal</div>
+                <div class="mono">Análisis de Estabilidad Temporal (Motor BigQuery)</div>
                 <h1>Características de la Muestra 2025-2026</h1>
             </div>
-            <div class="mono" id="records-count">Muestra: 0 registros</div>
+            <div class="mono" id="records-count">Cargando métricas...</div>
         </header>
 
         <!-- Contenedor de las 5 Pestañas de Agrupación de Riesgo y Crédito -->
@@ -218,13 +218,13 @@
         </div>
 
         <div class="filter-bar">
-            <!-- Grupo: Variable en display (Se oculta dinámicamente en Scores) -->
+            <!-- Grupo: Variable en display (Se oculta dinámicamente en pestaña Scores) -->
             <div class="filter-group" id="group-variable">
                 <label for="filtro-variable"><i class="fa-solid fa-chart-bar"></i> Variable en Display (Eje Y)</label>
                 <select id="filtro-variable" onchange="updateDashboard()"></select>
             </div>
             
-            <!-- Grupo: Filtro de Producto (Siempre visible, con "Todos los Productos" excepto en Scores) -->
+            <!-- Grupo: Filtro de Producto (Siempre visible, con "Todos los Productos" excepto en pestaña Scores) -->
             <div class="filter-group" id="group-producto">
                 <label for="filtro-producto"><i class="fa-solid fa-filter"></i> Segmentar por Producto</label>
                 <select id="filtro-producto" onchange="alCambiarProducto()"></select>
@@ -360,7 +360,7 @@
 
         if (isGoogleAppsScript) {
             envBanner.className = "status-banner production";
-            envBanner.innerHTML = `<i class="fa-solid fa-cloud-bolt"></i> <strong>Conexión Activa con Sheets:</strong> Visualizando datos actualizados de Suburbia en producción.`;
+            envBanner.innerHTML = `<i class="fa-solid fa-cloud-bolt"></i> <strong>Conexión Activa con Sheets (Pre-Agregado):</strong> Visualizando agregaciones analíticas de BigQuery.`;
             
             google.script.run
                 .withSuccessHandler(initDashboard)
@@ -370,7 +370,7 @@
                 .getDashboardData();
         } else {
             envBanner.className = "status-banner sandbox";
-            envBanner.innerHTML = `<i class="fa-solid fa-circle-info"></i> <strong>Entorno de Vista Previa:</strong> Simulación local activa con las 5 pestañas de negocio configuradas.`;
+            envBanner.innerHTML = `<i class="fa-solid fa-circle-info"></i> <strong>Entorno de Vista Previa:</strong> Simulando la estructura unpivoted agregada de BigQuery de manera local.`;
             
             setTimeout(() => {
                 try {
@@ -389,7 +389,6 @@
         variablesDisponibles = response.variablesDisponibles;
         productosDisponibles = response.productos;
 
-        // Cargar los productos disponibles en cascada dinámicamente según la pestaña cargada
         document.getElementById("loader").style.display = "none";
         document.getElementById("dashboard-content").style.display = "block";
         
@@ -480,21 +479,23 @@
         updateDashboard();
     }
 
-    // Filtra y despliega únicamente los modelos que corresponden al producto activo
+    // Filtra y despliega únicamente los modelos que corresponden al producto activo (Case-Insensitive)
     function poblarModelosPorProductoActual() {
         let productoSeleccionado = document.getElementById("filtro-producto").value;
         let selectModelo = document.getElementById("filtro-modelo");
         selectModelo.innerHTML = ""; // Limpiamos el selector completamente
 
-        // Obtenemos el arreglo de modelos mapeados para el producto actual
-        let modelosMapeados = MODELOS_POR_PRODUCTO[productoSeleccionado] || [];
+        // Búsqueda robusta insensible a mayúsculas/minúsculas para el mapeo
+        let prodKey = Object.keys(MODELOS_POR_PRODUCTO).find(
+            k => k.toLowerCase().trim() === productoSeleccionado.toLowerCase().trim()
+        );
+        let modelosMapeados = prodKey ? MODELOS_POR_PRODUCTO[prodKey] : [];
 
         modelosMapeados.forEach(m => {
             let etiquetaAmigable = NOMBRES_MODELOS[m] || m;
             selectModelo.innerHTML += `<option value="${m}">${etiquetaAmigable}</option>`;
         });
 
-        // Seleccionamos el primer modelo disponible por defecto
         if (modelosMapeados.length > 0) {
             selectModelo.value = modelosMapeados[0];
         }
@@ -546,22 +547,25 @@
             return;
         }
 
-        // LÓGICA DE FILTRADO COMBINADO ESTRICTO: Producto + Modelo correspondientes
+        // LÓGICA DE FILTRADO COMBINADO ESTRICTO E INMUNE A CASING: Variable + Producto + Modelo correspondientes
         let datosFiltrados = datasetCompleto.filter(row => {
-            let pasaProducto = (productoSeleccionado === "ALL" || row.producto === productoSeleccionado);
+            let pasaVariable = (row.variable.toLowerCase().trim() === variableSeleccionada.toLowerCase().trim());
+            let pasaProducto = (productoSeleccionado === "ALL" || row.producto.toLowerCase().trim() === productoSeleccionado.toLowerCase().trim());
             let pasaModelo = true;
             if (tabActiva === 'scores') {
-                pasaModelo = (row.modelo === modeloSeleccionado);
+                pasaModelo = modeloSeleccionado && row.modelo && (row.modelo.toLowerCase().trim() === modeloSeleccionado.toLowerCase().trim());
             }
-            return pasaProducto && pasaModelo;
+            return pasaVariable && pasaProducto && pasaModelo;
         });
 
-        document.getElementById("records-count").innerText = `Muestra Actual: ${datosFiltrados.length.toLocaleString()} registros`;
+        // Contabilizar suma total de volumen pre-agregado (Se declara primero de forma segura)
+        let sumaTotalCasos = datosFiltrados.reduce((sum, r) => sum + r.conteo, 0);
+        document.getElementById("records-count").innerText = `Volumen de Población Evaluada: ${sumaTotalCasos.toLocaleString()} clientes (100% Sin Muestreo)`;
 
         let categoriesSet = {};
         datosFiltrados.forEach(row => {
-            if(row[variableSeleccionada] !== undefined && row[variableSeleccionada] !== null) {
-                categoriesSet[row[variableSeleccionada]] = row[variableSeleccionada];
+            if(row.valor !== undefined && row.valor !== null) {
+                categoriesSet[row.valor] = row.valor;
             }
         });
         
@@ -587,11 +591,12 @@
             listaCategorias.forEach(cat => { conteosPorPeriodo[per][cat] = 0; });
         });
 
+        // SUMA DE CONTEOS AGREGADOS DE BIGQUERY
         datosFiltrados.forEach(row => {
             let p = row.periodo;
-            let c = row[variableSeleccionada];
+            let c = row.valor;
             if(conteosPorPeriodo[p] && conteosPorPeriodo[p][c] !== undefined) {
-                conteosPorPeriodo[p][c]++;
+                conteosPorPeriodo[p][c] += row.conteo;
             }
         });
 
@@ -648,7 +653,7 @@
     }
 
     // =========================================================================
-    // SIMULADOR DE DATOS DE PRUEBA (20 VARIABLES CON MODELOS DE VISA)
+    // SIMULADOR DE DATOS DE PRUEBA: FORMATO UNPIVOTADO/AGREGADO VERTICAL DE BQ
     // =========================================================================
     function generarDatosPruebaMapeados() {
         const periodos = ["2026-01", "2026-02", "2026-03", "2026-04", "2026-05", "2026-06"];
@@ -674,68 +679,6 @@
             "SIN MODULO SCORE"
         ];
 
-        const risklevels = ["0", "1", "2", "3", "4", "5"];
-        const flagNoHits = ["Hit", "NoHit"];
-        const flagFemeninos = ["Mujer", "Hombre"];
-        const escolaridades = ["Preparatoria", "Técnica/ Comercial", "Licenciatura", "Posgrado", "Otro", "Sin informacion", "Sin informacion", "Sin informacion"];
-        const scores = ["[-,216)", "[216,226)", "[226,233)", "[233,241)", "[241,247)", "[247,255)", "[255,261)", "[261,269)", "[269,278)", "[278,+)"];
-        const edades = ["< 25", "25 - 39", "40 - 54", "55 - 69", "70+"];
-        const ingresos = ["0k - 10k", "10k - 15k", "15k - 20k", "20k - 25k", "25k - 30k", "30k - 35k", "35k+"];
-        const lineasOnUs = ["0k - 10k", "10k - 15k", "15k - 20k", "25k - 30k", "35k+"];
-        const lineasOffUs = ["0k - 10k", "15k - 20k", "35k+"];
-        const utilizaciones = ["0%", "1% - 30%", "31% - 60%", "61% - 90%", "91% - 100%"];
-        const tasas = ["12", "18", "24", "32"];
-        const estadosCiviles = ["Casado", "Soltero", "Sin informacion"];
-        const viviendas = ["Propia", "Rentada/Hipotecada", "Familiar", "Sin informacion"];
-        const ptis = ["[0, 0.03)", "[0.03, 0.06)", "[0.06, 0.09)", "[0.09, 0.12)", "[0.12, 0.15)", "[0.15, +)"];
-        const btis = ["[0, 0.03)", "[0.03, 0.06)", "[0.06, 0.09)", "[0.09, 0.12)", "[0.12, +)"];
-        const ltiOnus = ["[0, 0.03)", "[0.03, 0.06)", "[0.06, 0.09)", "[0.09, 0.12)", "[0.12, +)"];
-        const ltiTots = ["[0, 2)", "[2, 4)", "[4, 6)", "[6, 8)", "[8, +)"];
-        const consultas3M = ["[0, 10)", "[10, 20)", "[20, 30)", "[30, 40)", "[40, +)"];
-        const consultas6M = ["[0, 10)", "[10, 20)", "[20, 30)", "[30, 40)", "[40, +)"];
-        const numeroTarjetas = ["[0, 5)", "[5, 10)", "[10, 15)", "[15, 20)", "[20, 25)", "[25, +)"];
-
-        let rawRows = [];
-
-        for (let i = 0; i < 4000; i++) {
-            const prod = productos[Math.floor(Math.random() * productos.length)];
-            const per = periodos[Math.floor(Math.random() * periodos.length)];
-
-            // Asignación coherente del modelo simulado según el producto específico
-            let mod;
-            if (prod === 'VISA') {
-                mod = modelosVisa[Math.floor(Math.random() * modelosVisa.length)];
-            } else {
-                mod = modelosDepMin[Math.floor(Math.random() * modelosDepMin.length)];
-            }
-
-            rawRows.push({
-                periodo: per,
-                producto: prod,
-                modelo: mod,
-                risklevel: risklevels[Math.floor(Math.random() * risklevels.length)],
-                flag_nohit: flagNoHits[Math.random() > 0.4 ? 0 : 1],
-                flag_femenino: flagFemeninos[Math.random() > 0.5 ? 0 : 1],
-                escolaridad: escolaridades[Math.floor(Math.random() * escolaridades.length)],
-                score: scores[Math.floor(Math.random() * scores.length)],
-                edad: edades[Math.floor(Math.random() * edades.length)],
-                ingreso: ingresos[Math.floor(Math.random() * ingresos.length)],
-                linea_credito_onus: lineasOnUs[Math.floor(Math.random() * lineasOnUs.length)],
-                linea_credito_offus: lineasOffUs[Math.floor(Math.random() * lineasOffUs.length)],
-                utilizacion: utilizaciones[Math.floor(Math.random() * utilizaciones.length)],
-                tasa: tasas[Math.floor(Math.random() * tasas.length)],
-                estado_civil: estadosCiviles[Math.floor(Math.random() * estadosCiviles.length)],
-                vivienda: viviendas[Math.floor(Math.random() * viviendas.length)],
-                pti: ptis[Math.floor(Math.random() * ptis.length)],
-                bti: btis[Math.floor(Math.random() * btis.length)],
-                lti_onus: ltiOnus[Math.floor(Math.random() * ltiOnus.length)],
-                lti_tot: ltiTots[Math.floor(Math.random() * ltiTots.length)],
-                consultas_3m: consultas3M[Math.floor(Math.random() * consultas3M.length)],
-                consultas_6m: consultas6M[Math.floor(Math.random() * consultas6M.length)],
-                numero_tarjetas: numeroTarjetas[Math.floor(Math.random() * numeroTarjetas.length)]
-            });
-        }
-
         const targetVariables = [
             "risklevel", "flag_nohit", "flag_femenino", "escolaridad", 
             "score", "edad", "ingreso", "linea_credito_onus", 
@@ -743,6 +686,64 @@
             "estado_civil", "vivienda", "pti", "bti", "lti_onus", 
             "lti_tot", "consultas_3m", "consultas_6m", "numero_tarjetas"
         ];
+
+        // Definición de las categorías para simular la agregación
+        const categoriasMap = {
+            "risklevel": ["0", "1", "2", "3", "4", "5"],
+            "flag_nohit": ["Hit", "NoHit"],
+            "flag_femenino": ["Mujer", "Hombre"],
+            "escolaridad": ["Preparatoria", "Técnica/ Comercial", "Licenciatura", "Posgrado", "Otro", "Sin informacion"],
+            "estado_civil": ["Casado", "Soltero", "Sin informacion"],
+            "vivienda": ["Propia", "Rentada/Hipotecada", "Familiar", "Sin informacion"],
+            "score": ["[-,216)", "[216,226)", "[226,233)", "[233,241)", "[241,247)", "[247,255)", "[255,261)", "[261,269)", "[269,278)", "[278,+)"],
+            "edad": ["< 25", "25 - 39", "40 - 54", "55 - 69", "70+"],
+            "ingreso": ["0k - 10k", "10k - 15k", "15k - 20k", "20k - 25k", "25k - 30k", "30k - 35k", "35k+"],
+            "linea_credito_onus": ["0k - 10k", "10k - 15k", "15k - 20k", "25k - 30k", "35k+"],
+            "linea_credito_offus": ["0k - 10k", "15k - 20k", "35k+"],
+            "utilizacion": ["0%", "1% - 30%", "31% - 60%", "61% - 90%", "91% - 100%"],
+            "tasa": ["12", "18", "24", "32"],
+            "pti": ["[0, 0.03)", "[0.03, 0.06)", "[0.06, 0.09)", "[0.09, 0.12)", "[0.12, 0.15)", "[0.15, +)"],
+            "bti": ["[0, 0.03)", "[0.03, 0.06)", "[0.06, 0.09)", "[0.09, 0.12)", "[0.12, +)"],
+            "lti_onus": ["[0, 0.03)", "[0.03, 0.06)", "[0.06, 0.09)", "[0.09, 0.12)", "[0.12, +)"],
+            "lti_tot": ["[0, 2)", "[2, 4)", "[4, 6)", "[6, 8)", "[8, +)"],
+            "consultas_3m": ["[0, 10)", "[10, 20)", "[20, 30)", "[30, 40)", "[40, +)"],
+            "consultas_6m": ["[0, 10)", "[10, 20)", "[20, 30)", "[30, 40)", "[40, +)"],
+            "numero_tarjetas": ["[0, 5)", "[5, 10)", "[10, 15)", "[15, 20)", "[20, 25)", "[25, +)"]
+        };
+
+        let rawRows = [];
+
+        // Generar conteos agregados para todas las combinaciones posibles
+        periodos.forEach(per => {
+            productos.forEach(prod => {
+                const modelosDeProducto = (prod === 'VISA') ? modelosVisa : modelosDepMin;
+                
+                modelosDeProducto.forEach(mod => {
+                    targetVariables.forEach(v => {
+                        const categorias = categoriasMap[v];
+                        
+                        categorias.forEach(cat => {
+                            // Simulador de volumen agregado (con conteos aleatorios realistas de 100 a 4500 casos)
+                            let conteoSimulado = Math.floor(Math.random() * 4000) + 120;
+                            
+                            // Forzar que 'Sin informacion' de escolaridad sea dominante para probar re-porcentuación
+                            if (v === 'escolaridad' && cat === 'Sin informacion') {
+                                conteoSimulado = Math.floor(conteoSimulado * 5.5);
+                            }
+
+                            rawRows.push({
+                                periodo: per,
+                                producto: prod,
+                                modelo: mod,
+                                variable: v,
+                                valor: cat,
+                                conteo: conteoSimulado
+                            });
+                        });
+                    });
+                });
+            });
+        });
 
         return {
             periodos: periodos.sort(),
@@ -754,3 +755,4 @@
 </script>
 </body>
 </html>
+
