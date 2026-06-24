@@ -192,8 +192,8 @@
     <div id="dashboard-content" style="display: none;">
         <header>
             <div>
-                <div class="mono">Análisis de Estabilidad Temporal (Motor BigQuery)</div>
-                <h1>Características de la Muestra 2025-2026</h1>
+                <div class="mono">Análisis de Estabilidad Temporal </div>
+                <h1>Características del perfil 2025-2026</h1>
             </div>
             <div class="mono" id="records-count">Cargando métricas...</div>
         </header>
@@ -262,13 +262,13 @@
     let chartInstance = null;
     let tabActiva = 'riesgo';
 
-    // Agrupación optimizada en las 5 pestañas de negocio solicitadas
+    // Agrupación de variables en las 5 pestañas de negocio solicitadas (Variables unificadas en minúscula para evitar caídas de casing)
     const VARIABLES_POR_TAB = {
         "riesgo": ["risklevel", "tasa"],
         "demograficos": ["edad", "flag_femenino", "escolaridad", "estado_civil", "vivienda", "ingreso"],
         "scores": ["score"],
         "endeudamiento": ["linea_credito_onus", "linea_credito_offus", "utilizacion", "pti", "bti", "lti_onus", "lti_tot"],
-        "buro": ["flag_nohit", "consultas_3m", "consultas_6m", "numero_tarjetas"]
+        "buro": ["flag_nohit", "consultas_3m", "consultas_6m", "numero_tarjetas", "mop_max_3m", "mop_max_6m", "mop_max_9m", "mop_max_12m", "mop_max_24m"]
     };
 
     // Diccionario de traducción y etiqueta de variables para la interfaz
@@ -276,9 +276,9 @@
         "risklevel": "Nivel de riesgo",
         "flag_nohit": "Historial (Sin Historial / No Hit)",
         "flag_femenino": "Género",
-        "escolaridad": "Escolaridad (Catálogo Suburbia)",
+        "escolaridad": "Escolaridad",
         "score": "Bines de Score",
-        "edad": "Cohortes de Edad",
+        "edad": "Edad",
         "ingreso": "Rangos de Ingreso",
         "linea_credito_onus": "Línea Interna (OnUs)",
         "linea_credito_offus": "Línea Externa (OffUs)",
@@ -286,13 +286,18 @@
         "tasa": "Tasa de Interés",
         "estado_civil": "Estado Civil",
         "vivienda": "Tipo de Vivienda",
-        "pti": "PTI (Payment to Income)",
-        "bti": "BTI (Burden to Income)",
+        "pti": "PTI",
+        "bti": "BTI",
         "lti_onus": "LTI OnUs",
         "lti_tot": "LTI Total",
-        "consultas_3m": "Consultas (Últimos 3 Meses)",
-        "consultas_6m": "Consultas (Últimos 6 Meses)",
-        "numero_tarjetas": "Número de Tarjetas de Crédito"
+        "consultas_3m": "Consultas últimos 3 Meses",
+        "consultas_6m": "Consultas últimos 6 Meses",
+        "numero_tarjetas": "Número de Tarjetas de Crédito",
+        "mop_max_3m": "MOP Máximo últimos 3 Meses",
+        "mop_max_6m": "MOP Máximo últimos 6 Meses",
+        "mop_max_9m": "MOP Máximo últimos 9 Meses",
+        "mop_max_12m": "MOP Máximo últimos 12 Meses",
+        "mop_max_24m": "MOP Máximo últimos 24 Meses"
     };
 
     // Mapeo Producto -> Modelos correspondientes (derivado directamente de tu consulta SQL unificada de Suburbia)
@@ -501,20 +506,28 @@
         }
     }
 
-    // Algoritmo matemático para clasificar y ordenar de menor a mayor los rangos y bines
+    // Algoritmo matemático para ordenar bines
     function obtenerPrimerNumero(texto) {
         if (typeof texto !== 'string') return Number(texto) || 0;
         
         let txt = texto.trim().replace(/[\[\]\(\)\+]/g, '').toLowerCase();
         
-        // Poner nulos, sin información u otros al final de forma limpia
         if (txt.includes('sin informacion') || txt.includes('sin información') || txt.includes('otros/null') || txt.includes('otro') || txt.includes('null') || txt.includes('otros')) {
             return 999999;
+        }
+        // Soporte para menor que (<) o mayor que (>) para ordenar de forma lógica antes o después
+        if (txt.startsWith('<')) {
+            let num = parseFloat(txt.replace('<', '').trim());
+            return isNaN(num) ? 0 : num - 0.5;
+        }
+        if (txt.startsWith('>')) {
+            let num = parseFloat(txt.replace('>', '').trim());
+            return isNaN(num) ? 0 : num + 0.5;
         }
         if (txt.includes('-')) {
             let partes = txt.split('-');
             let base = partes[0].trim();
-            if (base === '') return -1; // sitúa "[-, 216)" al inicio
+            if (base === '') return -1;
             let num = parseFloat(base);
             return isNaN(num) ? 0 : num;
         }
@@ -558,7 +571,7 @@
             return pasaVariable && pasaProducto && pasaModelo;
         });
 
-        // Contabilizar suma total de volumen pre-agregado (Se declara primero de forma segura)
+        // Contabilizar suma total de volumen pre-agregado
         let sumaTotalCasos = datosFiltrados.reduce((sum, r) => sum + r.conteo, 0);
         document.getElementById("records-count").innerText = `Volumen de Población Evaluada: ${sumaTotalCasos.toLocaleString()} clientes (100% Sin Muestreo)`;
 
@@ -569,15 +582,12 @@
             }
         });
         
-        // Obtener la lista base de categorías ordenadas numéricamente
         let listaCategorias = Object.keys(categoriesSet).sort((a, b) => {
             return obtenerPrimerNumero(a) - obtenerPrimerNumero(b);
         });
 
-        // DEFINICIÓN DE NULOS: Patrones de texto que representan ausencia de información en tu base de datos
         const PATRONES_NULOS = ["sin informacion", "sin información", "otros/null", "null", "otros", "sin info"];
 
-        // Si el switch está activo, excluimos los bines vacíos del array de dibujo y análisis
         if (omitirNulos) {
             listaCategorias = listaCategorias.filter(cat => {
                 let catLow = cat.toLowerCase().trim();
@@ -610,11 +620,8 @@
         // CONSTRUCCIÓN DE DATASETS CON RE-PORCENTUACIÓN DINÁMICA
         let chartDatasets = listaCategorias.map((cat, index) => {
             let dataPorcentual = periodosEjeX.map(per => {
-                // El total del mes se calcula SUMANDO ÚNICAMENTE las categorías válidas que se van a dibujar
                 let totalMes = listaCategorias.reduce((sum, c) => sum + conteosPorPeriodo[per][c], 0);
                 if (totalMes === 0) return 0;
-                
-                // Calculamos el porcentaje sobre esta nueva base filtrada (Re-proporcionalización)
                 return parseFloat(((conteosPorPeriodo[per][cat] / totalMes) * 100).toFixed(2));
             });
 
@@ -659,7 +666,6 @@
         const periodos = ["2026-01", "2026-02", "2026-03", "2026-04", "2026-05", "2026-06"];
         const productos = ["Minipagos", "VISA", "Departamental"];
         
-        // Modelos correspondientes a Departamental y Minipagos
         const modelosDepMin = [
             "SCORECARDSBBHIT_THICKREV", 
             "SCORECARDSBBHIT_THINREVTLAGELT30", 
@@ -670,7 +676,6 @@
             "SCORECARDSBBNOHITNREV_AGEGE30"
         ];
 
-        // Modelos correspondientes a VISA (Mapeo de la imagen de catálogo)
         const modelosVisa = [
             "SCORECARD_LPCPUROS2020",
             "SC_SBBVISATDOFFUSEDADGE45",
@@ -684,10 +689,11 @@
             "score", "edad", "ingreso", "linea_credito_onus", 
             "linea_credito_offus", "utilizacion", "tasa",
             "estado_civil", "vivienda", "pti", "bti", "lti_onus", 
-            "lti_tot", "consultas_3m", "consultas_6m", "numero_tarjetas"
+            "lti_tot", "consultas_3m", "consultas_6m", "numero_tarjetas",
+            "mop_max_3m", "mop_max_6m", "mop_max_9m", "mop_max_12m", "mop_max_24m"
         ];
 
-        // Definición de las categorías para simular la agregación
+        // Categorías que incluyen los bines de MOPs solicitados
         const categoriasMap = {
             "risklevel": ["0", "1", "2", "3", "4", "5"],
             "flag_nohit": ["Hit", "NoHit"],
@@ -702,13 +708,18 @@
             "linea_credito_offus": ["0k - 10k", "15k - 20k", "35k+"],
             "utilizacion": ["0%", "1% - 30%", "31% - 60%", "61% - 90%", "91% - 100%"],
             "tasa": ["12", "18", "24", "32"],
-            "pti": ["[0, 0.03)", "[0.03, 0.06)", "[0.06, 0.09)", "[0.09, 0.12)", "[0.12, 0.15)", "[0.15, +)"],
-            "bti": ["[0, 0.03)", "[0.03, 0.06)", "[0.06, 0.09)", "[0.09, 0.12)", "[0.12, +)"],
-            "lti_onus": ["[0, 0.03)", "[0.03, 0.06)", "[0.06, 0.09)", "[0.09, 0.12)", "[0.12, +)"],
-            "lti_tot": ["[0, 2)", "[2, 4)", "[4, 6)", "[6, 8)", "[8, +)"],
-            "consultas_3m": ["[0, 10)", "[10, 20)", "[20, 30)", "[30, 40)", "[40, +)"],
-            "consultas_6m": ["[0, 10)", "[10, 20)", "[20, 30)", "[30, 40)", "[40, +)"],
-            "numero_tarjetas": ["[0, 5)", "[5, 10)", "[10, 15)", "[15, 20)", "[20, 25)", "[25, +)"]
+            "pti": ["0%-3%", "3%-6%", "6%-9%", "9%-12%", "12%-15%", "15%+"],
+            "bti": ["0-0.20", "0.20-0.40", "0.40-0.60", "0.60-0.80", "0.80-1", "1-1.2", "1.2-1.4", "1.4-1.6", "1.6-1.8", "1.8-2", "2+"],
+            "lti_onus": ["0-0.20", "0.20-0.40", "0.40-0.60", "0.60-0.80", "0.80-1", "1-1.2", "1.2-1.4", "1.4-1.6", "1.6-1.8", "1.8-2", "2+"],
+            "lti_tot": ["0-2", "2-4", "4-6", "6-8", "8+"],
+            "consultas_3m": ["0", "1", "2", "3", "4", "5", "6+"],
+            "consultas_6m": ["0", "1", "2", "3", "4", "5", "6+"],
+            "numero_tarjetas": ["1", "2", "3", "4", "5", "6", "7", "8+"],
+            "mop_max_3m": ["1", "2", "3", "4", "5", "6", "7", "8-10", "96-99", "Otros/Null"],
+            "mop_max_6m": ["1", "2", "3", "4", "5", "6", "7", "8-10", "96-99", "Otros/Null"],
+            "mop_max_9m": ["1", "2", "3", "4", "5", "6", "7", "8-10", "96-99", "Otros/Null"],
+            "mop_max_12m": ["1", "2", "3", "4", "5", "6", "7", "8-10", "96-99", "Otros/Null"],
+            "mop_max_24m": ["1", "2", "3", "4", "5", "6", "7", "8-10", "96-99", "Otros/Null"]
         };
 
         let rawRows = [];
@@ -723,10 +734,8 @@
                         const categorias = categoriasMap[v];
                         
                         categorias.forEach(cat => {
-                            // Simulador de volumen agregado (con conteos aleatorios realistas de 100 a 4500 casos)
                             let conteoSimulado = Math.floor(Math.random() * 4000) + 120;
                             
-                            // Forzar que 'Sin informacion' de escolaridad sea dominante para probar re-porcentuación
                             if (v === 'escolaridad' && cat === 'Sin informacion') {
                                 conteoSimulado = Math.floor(conteoSimulado * 5.5);
                             }
