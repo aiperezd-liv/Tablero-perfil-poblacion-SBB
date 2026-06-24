@@ -1,6 +1,6 @@
 DECLARE FCH_HOY DATE DEFAULT CURRENT_DATE('America/Mexico_City');
 DECLARE FCH_INI DATE DEFAULT (DATE_ADD(DATE_TRUNC(FCH_HOY, YEAR), INTERVAL -1 YEAR));
-DECLARE FCH_FIN DATE DEFAULT (LAST_DAY(DATE_TRUNC(FCH_HOY, YEAR), YEAR));
+DECLARE FCH_FIN DEFAULT (LAST_DAY(DATE_TRUNC(FCH_HOY, YEAR), YEAR));
 
 WITH 
 VFAC_OMDM_FLUJO AS (
@@ -57,7 +57,6 @@ SOLICITUDES AS (
     d.BR_SEXO,
     d.BR_ESCOLARIDAD,
     d.BR_ING_TOT,
-    -- Traemos los campos de Estado Civil y Vivienda desde la APIA
     d.BR_EDC_CVE,
     d.BR_TIP_VDA,
     e.PTI,
@@ -67,8 +66,14 @@ SOLICITUDES AS (
     e.IQ_NUM_CONS_6M,
     e.TL_NUM_CTAS_TDC_ABT,
     e.TL_SUM_SDO_CTAS_TDC_ABT,
-    -- Traemos el descriptor de scorecard necesario para mapear bines departamentales y de minipagos
     e.BR_MODULO_SCORE_DES,
+    -- Extraemos las nuevas variables de Buró solicitadas
+    e.TL_MAX_MOP_CTAS_VAL_3M,
+    e.TL_MAX_MOP_CTAS_VAL_6M,
+    e.TL_MAX_MOP_CTAS_VAL_9M,
+    e.TL_MAX_MOP_CTAS_VAL_12M,
+    e.TL_MAX_MOP_CTAS_VAL_24M,
+    
     b.BR_IMP_LIM_CRED/GREATEST(d.BR_ING_TOT,2000) AS LTI_ONUS,
     (b.BR_IMP_LIM_CRED+e.TL_SUM_LIM_CRED_CTAS_TDC_ABT)/GREATEST(d.BR_ING_TOT,2000) AS LTI_TOT,
     CASE 
@@ -203,10 +208,9 @@ SOLICITUDES AS (
     AND a.BR_FCH_SOLIC >= FCH_INI
 ),
 
--- MUESTRA_PREPARADA: Exactamente tu lógica original limpia, corregida y probada
 MUESTRA_PREPARADA AS (
   SELECT
-    FORMAT_DATE('%Y-%m', BR_FCH_SOLIC) AS PERIODO, -- Usa la fecha real de la solicitud
+    FORMAT_DATE('%Y-%m', BR_FCH_SOLIC) AS PERIODO,
     Producto,
     COALESCE(BR_MODULO_SCORE_DES, 'Otros/Null') AS Modelo,
     CAST(RiskLevel AS STRING) AS RiskLevel, 
@@ -317,6 +321,44 @@ MUESTRA_PREPARADA AS (
       WHEN CAST(BR_ESCOLARIDAD AS STRING) = '5' THEN 'Otro'
       ELSE 'Sin informacion'
     END AS Escolaridad,
+
+    -- =========================================================================
+    -- NUEVO MAPEO DE MOPs SOLICITADO (3M, 6M, 9M, 12M, 24M)
+    -- =========================================================================
+    CASE 
+      WHEN TL_MAX_MOP_CTAS_VAL_3M BETWEEN 1 AND 7 THEN CAST(TL_MAX_MOP_CTAS_VAL_3M AS STRING)
+      WHEN TL_MAX_MOP_CTAS_VAL_3M IN (8, 9, 10) THEN '8-10'
+      WHEN TL_MAX_MOP_CTAS_VAL_3M IN (96, 97, 99) THEN '96-99'
+      ELSE 'Otros/Null'
+    END AS Mop_Max_3M,
+
+    CASE 
+      WHEN TL_MAX_MOP_CTAS_VAL_6M BETWEEN 1 AND 7 THEN CAST(TL_MAX_MOP_CTAS_VAL_6M AS STRING)
+      WHEN TL_MAX_MOP_CTAS_VAL_6M IN (8, 9, 10) THEN '8-10'
+      WHEN TL_MAX_MOP_CTAS_VAL_6M IN (96, 97, 99) THEN '96-99'
+      ELSE 'Otros/Null'
+    END AS Mop_Max_6M,
+
+    CASE 
+      WHEN TL_MAX_MOP_CTAS_VAL_9M BETWEEN 1 AND 7 THEN CAST(TL_MAX_MOP_CTAS_VAL_9M AS STRING)
+      WHEN TL_MAX_MOP_CTAS_VAL_9M IN (8, 9, 10) THEN '8-10'
+      WHEN TL_MAX_MOP_CTAS_VAL_9M IN (96, 97, 99) THEN '96-99'
+      ELSE 'Otros/Null'
+    END AS Mop_Max_9M,
+
+    CASE 
+      WHEN TL_MAX_MOP_CTAS_VAL_12M BETWEEN 1 AND 7 THEN CAST(TL_MAX_MOP_CTAS_VAL_12M AS STRING)
+      WHEN TL_MAX_MOP_CTAS_VAL_12M IN (8, 9, 10) THEN '8-10'
+      WHEN TL_MAX_MOP_CTAS_VAL_12M IN (96, 97, 99) THEN '96-99'
+      ELSE 'Otros/Null'
+    END AS Mop_Max_12M,
+
+    CASE 
+      WHEN TL_MAX_MOP_CTAS_VAL_24M BETWEEN 1 AND 7 THEN CAST(TL_MAX_MOP_CTAS_VAL_24M AS STRING)
+      WHEN TL_MAX_MOP_CTAS_VAL_24M IN (8, 9, 10) THEN '8-10'
+      WHEN TL_MAX_MOP_CTAS_VAL_24M IN (96, 97, 99) THEN '96-99'
+      ELSE 'Otros/Null'
+    END AS Mop_Max_24M,
     
     CASE
       -- VISA
@@ -353,7 +395,7 @@ MUESTRA_PREPARADA AS (
       WHEN Producto = 'VISA' AND SegmentoScore = 34 AND BR_SCORE_FIN < 281 THEN '[270,281)'
       WHEN Producto = 'VISA' AND SegmentoScore = 34 AND BR_SCORE_FIN >= 281 THEN '[281,+)'
 
-      -- -----------------------------------------------------------------------
+       -- -----------------------------------------------------------------------
       -- GRUPO B: DEPARTAMENTAL (BR_ORG = 210) - HIT
       -- -----------------------------------------------------------------------
       /* ThickRev */
@@ -529,6 +571,8 @@ MUESTRA_PREPARADA AS (
       WHEN Producto = 'Minipagos' AND BR_MODULO_SCORE_DES = 'SCORECARDSBBNOHITNREV_AGEGE30' AND BR_SCORE_FIN < 290 THEN '[279,290)'
       WHEN Producto = 'Minipagos' AND BR_MODULO_SCORE_DES = 'SCORECARDSBBNOHITNREV_AGEGE30' AND BR_SCORE_FIN < 302 THEN '[290,302)'
       WHEN Producto = 'Minipagos' AND BR_MODULO_SCORE_DES = 'SCORECARDSBBNOHITNREV_AGEGE30' AND BR_SCORE_FIN >= 302 THEN '[302,+)'
+
+
     END AS Score,
     
     CASE 
@@ -586,10 +630,10 @@ MUESTRA_PREPARADA AS (
   FROM SOLICITUDES
   WHERE CTA_CVE > 0 
   AND RiskLevel != -999
-
+   
 ),
 
--- UNPIVOT: Transponemos las 20 columnas a una estructura vertical sin tocar tu lógica de negocio
+-- UNPIVOT: Transposición de las 25 variables de negocio a estructura agregada vertical (Incluyendo los 5 bines de MOPs)
 MUESTRA_UNPIVOTED AS (
   SELECT 
     PERIODO,
@@ -602,12 +646,13 @@ MUESTRA_UNPIVOTED AS (
     valor_categoria FOR variable IN (
       RiskLevel, Flag_NoHit, Flag_Femenino, Estado_Civil, Vivienda, Escolaridad, 
       Score, Edad, Ingreso, Linea_Credito_OnUs, Linea_Credito_OffUs, Utilizacion, 
-      Tasa, PTI, BTI, LTI_ONUS, LTI_TOT, Consultas_3M, Consultas_6M, Numero_tarjetas
+      Tasa, PTI, BTI, LTI_ONUS, LTI_TOT, Consultas_3M, Consultas_6M, Numero_tarjetas,
+      Mop_Max_3M, Mop_Max_6M, Mop_Max_9M, Mop_Max_12M, Mop_Max_24M
     )
   )
 )
 
--- AGREGACIÓN FINAL: Sumatorias agrupadas del 100% de la población por BigQuery
+-- AGREGACIÓN FINAL DE VOLUMEN (100% Sin Muestreos en BigQuery)
 SELECT 
   PERIODO AS Periodo,
   Producto,
